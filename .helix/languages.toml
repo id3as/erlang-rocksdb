@@ -1,0 +1,3 @@
+[language-server.clangd]
+args = ["--compile-commands-dir=_build/cmake"]
+
