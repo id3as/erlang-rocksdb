@@ -22,7 +22,7 @@
 #include "erl_nif.h"
 
 #include "rocksdb/db.h"
-#include "rocksdb/utilities/backupable_db.h"
+#include "rocksdb/utilities/backup_engine.h"
 
 #include "atoms.h"
 #include "refobjects.h"
@@ -45,7 +45,7 @@ OpenBackupEngine(ErlNifEnv* env, int /*argc*/, const ERL_NIF_TERM argv[])
     return enif_make_badarg(env);
   }
 
-  s = rocksdb::BackupEngine::Open(rocksdb::Env::Default(), rocksdb::BackupableDBOptions(path), &backup_engine);
+  s = rocksdb::BackupEngine::Open(rocksdb::Env::Default(), rocksdb::BackupEngineOptions(path), &backup_engine);
   if(!s.ok())
     return error_tuple(env, ATOM_ERROR_BACKUP_ENGINE_OPEN, s);
 

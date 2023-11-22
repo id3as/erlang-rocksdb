@@ -18,14 +18,15 @@
 // -------------------------------------------------------------------
 
 #include <string>
+#include <aws/core/client/ClientConfiguration.h>
 
 #include "env.h"
 
 #include "atoms.h"
 #include "util.h"
 
-#include "rocksdb/cloud/cloud_env_options.h"
-
+#include "rocksdb/cloud/cloud_file_system.h"
+#include "rocksdb/cloud/cloud_storage_provider.h"
 
 namespace erocksdb {
 
@@ -52,7 +53,7 @@ ManagedEnv::EnvResourceCleanup(
 }
 
 ManagedEnv *
-ManagedEnv::CreateEnvResource(rocksdb::Env * env)
+ManagedEnv::CreateEnvResource(std::shared_ptr<rocksdb::Env> env)
 {
     ManagedEnv * ret_ptr;
     void * alloc_ptr;
@@ -71,20 +72,20 @@ ManagedEnv::RetrieveEnvResource(ErlNifEnv * Env, const ERL_NIF_TERM & EnvTerm)
     return ret_ptr;
 }
 
-ManagedEnv::ManagedEnv(rocksdb::Env * Env) : env_(Env) {}
+ManagedEnv::ManagedEnv(std::shared_ptr<rocksdb::Env> Env) : env_(Env) {}
 
 ManagedEnv::~ManagedEnv()
 {
-    if(env_)
-    {
-        delete env_;
-        env_ = NULL;
-    }
+    // if(env_)
+    // {
+    //     delete env_;
+    //     env_ = NULL;
+    // }
 
     return;
 }
 
-const rocksdb::Env* ManagedEnv::env() { return env_; }
+const rocksdb::Env* ManagedEnv::env() { return env_.get(); }
 
 ERL_NIF_TERM
 NewEnv(
@@ -93,12 +94,12 @@ NewEnv(
     const ERL_NIF_TERM argv[])
 {
     ManagedEnv *env_ptr;
-    rocksdb::Env *rdb_env;
+    std::shared_ptr<rocksdb::Env> rdb_env;
     if (argv[0] == erocksdb::ATOM_DEFAULT)
     {
-        rdb_env = rocksdb::Env::Default();
+        rdb_env = std::shared_ptr<rocksdb::Env>(rocksdb::Env::Default());
     } else if (argv[0] == erocksdb::ATOM_MEMENV) {
-        rdb_env = rocksdb::NewMemEnv(rocksdb::Env::Default());
+        rdb_env = std::shared_ptr<rocksdb::Env>(rocksdb::NewMemEnv(rocksdb::Env::Default()));
     } else {
         return enif_make_badarg(env);
     }
@@ -135,9 +136,21 @@ parse_aws_access_credentials(
     return erocksdb::ATOM_OK;
 }
 
+bool parse_scheme(std::string& scheme, Aws::Http::Scheme *dest) {
+    if (scheme == "http") {
+        *dest= Aws::Http::Scheme::HTTP;
+    }
+    else if (scheme == "https") {
+        *dest= Aws::Http::Scheme::HTTPS;
+    }
+    else {
+        return 0;
+    }       
+    return 1;
+}
 
 ERL_NIF_TERM
-parse_aws_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::AwsOptions& opts) {
+parse_aws_options(ErlNifEnv* env, ERL_NIF_TERM item, Aws::Client::ClientConfiguration& opts) {
     int arity;
     const ERL_NIF_TERM* option;
 
@@ -157,8 +170,11 @@ parse_aws_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::AwsOptions& opts) 
                 opts.endpointOverride = endpointOverride;
         } else if(option[0] == erocksdb::ATOM_SCHEME) {
             std::string scheme;
-            if (enif_get_std_string(env, option[1], scheme))
-                opts.scheme = scheme;
+            if (enif_get_std_string(env, option[1], scheme)) {
+                if (!parse_scheme(scheme, &opts.scheme)) {
+                    return erocksdb::ATOM_BADARG;
+                }
+            }
         } else if(option[0] == erocksdb::ATOM_VERIFY_SSL) {
             if (option[1] == ATOM_TRUE) {
                 opts.verifySSL = 1;
@@ -171,8 +187,11 @@ parse_aws_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::AwsOptions& opts) 
                 opts.proxyHost = proxyHost;
         } else if(option[0] == erocksdb::ATOM_PROXY_SCHEME) {
             std::string proxyScheme;
-            if (enif_get_std_string(env, option[1], proxyScheme))
-                opts.proxyScheme = proxyScheme;
+            if (enif_get_std_string(env, option[1], proxyScheme)) {
+                if (!parse_scheme(proxyScheme, &opts.proxyScheme)) {
+                    return erocksdb::ATOM_BADARG;
+                }
+            }
         } else if(option[0] == erocksdb::ATOM_PROXY_PORT) {
             unsigned int proxyPort;
             if (enif_get_uint(env, option[1], &proxyPort))
@@ -184,14 +203,14 @@ parse_aws_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::AwsOptions& opts) 
         } else if(option[0] == erocksdb::ATOM_PROXY_PASSWORD) {
             std::string proxyPassword;
             if (enif_get_std_string(env, option[1], proxyPassword))
-                opts.proxyScheme = proxyPassword;
+                opts.proxyPassword = proxyPassword;
         }
     }
     return erocksdb::ATOM_OK;
 }
 
 ERL_NIF_TERM
-parse_cloud_env_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::CloudEnvOptions& opts) {
+parse_cloud_env_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::CloudFileSystemOptions& opts) {
     int arity;
     const ERL_NIF_TERM* option;
 
@@ -202,9 +221,9 @@ parse_cloud_env_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::CloudEnvOpti
             fold(env, option[1], parse_aws_access_credentials, credentials);
             opts.credentials = credentials;
         } else if(option[0] == erocksdb::ATOM_AWS_OPTIONS) {
-            rocksdb::AwsOptions aws_options;
-            fold(env, option[1], parse_aws_options, aws_options);
-            opts.aws_options = aws_options;
+//            Aws::Client::ClientConfiguration aws_options;
+//            fold(env, option[1], parse_aws_options, aws_options);
+            // TODO opts.aws_options = aws_options;
         } else if (option[0] == erocksdb::ATOM_KEEP_LOCAL_SST_FILES) {
             opts.keep_local_sst_files = (option[1] == erocksdb::ATOM_TRUE);
         }  else if (option[0] == erocksdb::ATOM_KEEP_LOCAL_LOG_FILES) {
@@ -230,7 +249,7 @@ parse_cloud_env_options(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::CloudEnvOpti
         } else if (option[0] == erocksdb::ATOM_RUN_PURGER) {
             opts.run_purger = (option[1] == erocksdb::ATOM_TRUE);
         } else if (option[0] == erocksdb::ATOM_EPHEMERAL_RESYNC_ON_OPEN) {
-            opts.ephemeral_resync_on_open = (option[1] == erocksdb::ATOM_TRUE);
+            opts.resync_on_open = (option[1] == erocksdb::ATOM_TRUE);
         } else if (option[0] == erocksdb::ATOM_SKIP_DBID_VERIFICATION)
             opts.skip_dbid_verification = (option[1] == erocksdb::ATOM_TRUE);
     }
@@ -243,9 +262,9 @@ NewCloudEnv(
     int /*argc*/,
     const ERL_NIF_TERM argv[])
 {
-
     ManagedEnv *env_ptr;
-    rocksdb::CloudEnv *cloud_env;
+    std::shared_ptr<rocksdb::Env> cloud_env;
+    std::shared_ptr<rocksdb::FileSystem> cloud_fs;
 
     std::string src_bucket_name;
     std::string src_object_prefix;
@@ -253,7 +272,6 @@ NewCloudEnv(
     std::string dest_bucket_name;
     std::string dest_object_prefix;
     std::string dest_bucket_region;
-
 
     if(!enif_get_std_string(env, argv[0], src_bucket_name) ||
             !enif_get_std_string(env, argv[1], src_object_prefix) ||
@@ -263,23 +281,27 @@ NewCloudEnv(
             !enif_get_std_string(env, argv[5], dest_bucket_region))
         return enif_make_badarg(env);
 
-    rocksdb::CloudEnvOptions opts;
+    rocksdb::CloudFileSystemOptions opts;
     fold(env, argv[6], parse_cloud_env_options, opts);
 
-    rocksdb::Status status = rocksdb::CloudEnv::NewAwsEnv(rocksdb::Env::Default(),
-            reinterpret_cast<const std::string&>(src_bucket_name),
-            reinterpret_cast<const std::string&>(src_object_prefix),
-            reinterpret_cast<const std::string&>(src_bucket_region),
-            reinterpret_cast<const std::string&>(dest_bucket_name),
-            reinterpret_cast<const std::string&>(dest_object_prefix),
-            reinterpret_cast<const std::string&>(dest_bucket_region),
+    std::string bucket_prefix = "norsk-framestore/";
+    opts.src_bucket.SetBucketName(src_bucket_name, bucket_prefix);
+    opts.src_bucket.SetObjectPath(src_object_prefix);
+    opts.src_bucket.SetRegion(src_bucket_region);
+    opts.dest_bucket.SetBucketName(dest_bucket_name, bucket_prefix);
+    opts.dest_bucket.SetObjectPath(dest_object_prefix);
+    opts.dest_bucket.SetRegion(dest_bucket_region);
+        
+    rocksdb::CloudFileSystem* cfs = NULL;
+    rocksdb::Status status = rocksdb::CloudFileSystem::NewAwsFileSystem(rocksdb::FileSystem::Default(),
             opts,
             nullptr,
-            &cloud_env);
-
-    if(!status.ok())
+            &cfs);
+    cloud_fs.reset(cfs);
+    if(!status.ok()) {
         return error_tuple(env, ATOM_ERROR_DB_OPEN, status);
-
+    }
+    cloud_env = rocksdb::NewCompositeEnv(cloud_fs);
     env_ptr = ManagedEnv::CreateEnvResource(cloud_env);
 
     // create a resource reference to send erlang
@@ -296,22 +318,20 @@ CloudEnvEmptyBucket(
         int /* argc */,
         const ERL_NIF_TERM argv[])
 {
-
     ManagedEnv* env_ptr = ManagedEnv::RetrieveEnvResource(env, argv[0]);
 
     if(NULL==env_ptr)
         return enif_make_badarg(env);
 
-    rocksdb::CloudEnv* cloud_env = (rocksdb::CloudEnv* )env_ptr->env();
-
+    rocksdb::Env* cloud_env = (rocksdb::Env* )env_ptr->env();
     std::string bucket_prefix;
     std::string path_prefix;
     if(!enif_get_std_string(env, argv[1], bucket_prefix) ||
             !enif_get_std_string(env, argv[2], path_prefix))
         return enif_make_badarg(env);
-
+    std::shared_ptr<rocksdb::CloudFileSystem> fs = std::dynamic_pointer_cast<rocksdb::CloudFileSystem>(cloud_env->GetFileSystem());
     try {
-        cloud_env->EmptyBucket(bucket_prefix, path_prefix);
+        fs->GetStorageProvider()->EmptyBucket(bucket_prefix, path_prefix);
     } catch (const std::exception& e) {
         // pass through
         return ATOM_ERROR;

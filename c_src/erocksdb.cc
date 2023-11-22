@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <aws/core/Aws.h>
+#include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include "atoms.h"
 #include "erocksdb.h"
 #include "refobjects.h"
@@ -511,6 +513,12 @@ static int on_upgrade(ErlNifEnv* /*env*/, void** priv_data, void** old_priv_data
 static int on_load(ErlNifEnv* env, void** /*priv_data*/, ERL_NIF_TERM /*load_info*/)
 try
 {
+    using namespace Aws::Utils::Logging;
+    Aws::SDKOptions options;
+    options.loggingOptions.logLevel = LogLevel::Debug;
+//    options.loggingOptions.logger_create_fn = [] { return std::make_shared<ConsoleLogSystem>(LogLevel::Trace); };
+  Aws::InitAPI(options);
+    
   rocksdb::Env::Default();
 
   // inform erlang of our two resource types

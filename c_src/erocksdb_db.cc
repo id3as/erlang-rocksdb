@@ -18,6 +18,8 @@
 // -------------------------------------------------------------------
 
 #include <vector>
+#include <sys/time.h>
+#include <time.h>
 
 #include "rocksdb/db.h"
 #include "rocksdb/utilities/db_ttl.h"
@@ -246,10 +248,6 @@ ERL_NIF_TERM parse_db_option(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::DBOptio
         {
             opts.is_fd_close_on_exec = (option[1] == erocksdb::ATOM_TRUE);
         }
-        else if (option[0] == erocksdb::ATOM_SKIP_LOG_ERROR_ON_RECOVERY)
-        {
-            opts.skip_log_error_on_recovery = (option[1] == erocksdb::ATOM_TRUE);
-        }
         else if (option[0] == erocksdb::ATOM_STATS_DUMP_PERIOD_SEC)
         {
             unsigned int stats_dump_period_sec;
@@ -280,10 +278,6 @@ ERL_NIF_TERM parse_db_option(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::DBOptio
             unsigned int compaction_readahead_size;
             if (enif_get_uint(env, option[1], &compaction_readahead_size))
                 opts.compaction_readahead_size = compaction_readahead_size;
-        }
-        else if (option[0] == erocksdb::ATOM_NEW_TABLE_READER_FOR_COMPACTION_INPUTS)
-        {
-            opts.new_table_reader_for_compaction_inputs = (option[1] == erocksdb::ATOM_TRUE);
         }
         else if (option[0] == erocksdb::ATOM_USE_ADAPTIVE_MUTEX)
         {
@@ -452,9 +446,9 @@ ERL_NIF_TERM parse_cf_option(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::ColumnF
         }
         else if (option[0] == erocksdb::ATOM_MAX_MEM_COMPACTION_LEVEL)
         {
-            int max_mem_compaction_level;
-            if (enif_get_int(env, option[1], &max_mem_compaction_level))
-                opts.max_mem_compaction_level = max_mem_compaction_level;
+            int max_compaction_bytes;
+            if (enif_get_int(env, option[1], &max_compaction_bytes))
+                opts.max_compaction_bytes = max_compaction_bytes;
         }
         else if (option[0] == erocksdb::ATOM_TARGET_FILE_SIZE_BASE)
         {
@@ -486,19 +480,7 @@ ERL_NIF_TERM parse_cf_option(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::ColumnF
             if (enif_get_int(env, option[1], &max_compaction_bytes))
                 opts.max_compaction_bytes = max_compaction_bytes;
         }
-        else if (option[0] == erocksdb::ATOM_SOFT_RATE_LIMIT)
-        {
-            double soft_rate_limit;
-            if (enif_get_double(env, option[1], &soft_rate_limit))
-                opts.soft_rate_limit = soft_rate_limit;
-        }
-        else if (option[0] == erocksdb::ATOM_HARD_RATE_LIMIT)
-        {
-            double hard_rate_limit;
-            if (enif_get_double(env, option[1], &hard_rate_limit))
-                opts.hard_rate_limit = hard_rate_limit;
-        }
-        else if (option[0] == erocksdb::ATOM_ARENA_BLOCK_SIZE)
+       else if (option[0] == erocksdb::ATOM_ARENA_BLOCK_SIZE)
         {
             unsigned int arena_block_size;
             if (enif_get_uint(env, option[1], &arena_block_size))
@@ -507,10 +489,6 @@ ERL_NIF_TERM parse_cf_option(ErlNifEnv* env, ERL_NIF_TERM item, rocksdb::ColumnF
         else if (option[0] == erocksdb::ATOM_DISABLE_AUTO_COMPACTIONS)
         {
             opts.disable_auto_compactions = (option[1] == erocksdb::ATOM_TRUE);
-        }
-        else if (option[0] == erocksdb::ATOM_PURGE_REDUNDANT_KVS_WHILE_FLUSH)
-        {
-            opts.purge_redundant_kvs_while_flush = (option[1] == erocksdb::ATOM_TRUE);
         }
         else if (option[0] == erocksdb::ATOM_COMPACTION_STYLE)
         {
@@ -782,6 +760,54 @@ parse_cf_descriptor(ErlNifEnv* env, ERL_NIF_TERM item,
 
 namespace erocksdb {
 
+namespace port {
+
+using TimeVal = struct timeval;
+
+inline void GetTimeOfDay(TimeVal* tv, struct timezone* tz) {
+  gettimeofday(tv, tz);
+}
+
+inline struct tm* LocalTimeR(const time_t* timep, struct tm* result) {
+  return localtime_r(timep, result);
+}
+
+}  // namespace port
+
+// Prints logs to stderr for faster debugging
+class StderrLogger : public rocksdb::Logger {
+ public:
+  explicit StderrLogger(const rocksdb::InfoLogLevel log_level = rocksdb::InfoLogLevel::INFO_LEVEL)
+      : Logger(log_level) {}
+
+  ~StderrLogger() override;
+
+  // Brings overloaded Logv()s into scope so they're not hidden when we override
+  // a subset of them.
+  using Logger::Logv;
+
+  virtual void Logv(const char* format, va_list ap) override;
+};
+
+    StderrLogger::~StderrLogger() {}
+
+void StderrLogger::Logv(const char* format, va_list ap) {
+  const uint64_t thread_id = rocksdb::Env::Default()->GetThreadID();
+
+  port::TimeVal now_tv;
+  port::GetTimeOfDay(&now_tv, nullptr);
+  const time_t seconds = now_tv.tv_sec;
+  struct tm t;
+  port::LocalTimeR(&seconds, &t);
+  fprintf(stderr, "%04d/%02d/%02d-%02d:%02d:%02d.%06d %llx ", t.tm_year + 1900,
+          t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec,
+          static_cast<int>(now_tv.tv_usec),
+          static_cast<long long unsigned int>(thread_id));
+
+  vfprintf(stderr, format, ap);
+  fprintf(stderr, "\n");
+}
+    
 ERL_NIF_TERM
 Open(
     ErlNifEnv* env,
@@ -807,6 +833,10 @@ Open(
     rocksdb::ColumnFamilyOptions *cf_opts = new rocksdb::ColumnFamilyOptions;
     fold(env, argv[1], parse_cf_option, *cf_opts);
 
+    // todo
+    // db_opts->info_log_level = rocksdb::DEBUG_LEVEL;
+    // db_opts->info_log.reset(new StderrLogger(rocksdb::DEBUG_LEVEL));
+        
     // final options
     rocksdb::Options *opts = new rocksdb::Options(*db_opts, *cf_opts);
     rocksdb::Status status = rocksdb::DB::Open(*opts, db_name, &db);
@@ -1606,7 +1636,7 @@ GetApproximateSizes(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
         column_family = db_ptr->m_Db->DefaultColumnFamily();
     }
 
-    uint8_t flag;
+    rocksdb::DB::SizeApproximationFlags flag;
     ERL_NIF_TERM flag_term = argv[i + 1];
     if (flag_term == erocksdb::ATOM_NONE)
         flag = rocksdb::DB::SizeApproximationFlags::NONE;

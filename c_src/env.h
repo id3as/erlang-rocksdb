@@ -30,7 +30,7 @@ namespace erocksdb {
       static ErlNifResourceType* m_Env_RESOURCE;
 
     public:
-      explicit ManagedEnv(rocksdb::Env * Env);
+      explicit ManagedEnv(std::shared_ptr<rocksdb::Env> Env);
 
       ~ManagedEnv();
 
@@ -39,11 +39,11 @@ namespace erocksdb {
       static void CreateEnvType(ErlNifEnv * Env);
       static void EnvResourceCleanup(ErlNifEnv *Env, void * Arg);
 
-      static ManagedEnv * CreateEnvResource(rocksdb::Env * env);
+      static ManagedEnv * CreateEnvResource(std::shared_ptr<rocksdb::Env> env);
       static ManagedEnv * RetrieveEnvResource(ErlNifEnv * Env, const ERL_NIF_TERM & EnvTerm);
 
     private:
-      const rocksdb::Env* env_;
+      const std::shared_ptr<rocksdb::Env> env_;
   };
 
 }

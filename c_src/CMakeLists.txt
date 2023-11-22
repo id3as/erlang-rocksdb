@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.4.0 FATAL_ERROR)
 
 project(ErlangRocksDBNIF)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(POLICY CMP0028)
   cmake_policy(SET CMP0028 NEW)
@@ -25,8 +26,7 @@ if(POLICY CMP0075)
   cmake_policy(SET CMP0075 NEW)
 endif()
 
-
-
+include_directories(../../rocksdb-cloud/out/include)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/CMake")
 
@@ -44,7 +44,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${priv_dir})
 #    set(CMAKE_FIND_LIBRARY_SUFFIXES .a .so .dylib)
 #endif()
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (NOT WIN32)
@@ -67,7 +67,8 @@ endif ()
 set(ErlangRocksDBNIF_TARGET erocksdb)
 add_library(${ErlangRocksDBNIF_TARGET} MODULE "")
 
-set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 
@@ -136,7 +137,7 @@ if(WITH_TBB)
   find_package(TBB REQUIRED)
 endif()
 
-include(build-rocksdb)
+#include(build-rocksdb)
 
 option(WITH_AWS "build with S3 support" ON)
 if (WITH_AWS)
@@ -166,7 +167,7 @@ include_directories(${ROCKSDB_INCLUDE_DIRS})
 
 #--------------------------------------------------------------------------------
 
-set_property(TARGET ${ErlangRocksDBNIF_TARGET} PROPERTY CXX_STANDARD 14)
+set_property(TARGET ${ErlangRocksDBNIF_TARGET} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${ErlangRocksDBNIF_TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 set_property(TARGET ${ErlangRocksDBNIF_TARGET} PROPERTY CXX_EXTENSIONS OFF)
 
@@ -234,14 +235,15 @@ target_include_directories(${ErlangRocksDBNIF_TARGET}
 
 set(TARGET_LINKER_OPTIONS)
 if(APPLE)
-    set(TARGET_LINKER_OPTIONS "-dylib -arch x86_64 -lSystem -L/usr/local/lib -L. -flat_namespace -undefined suppress -rpath @loader_path/")
+    set(TARGET_LINKER_OPTIONS "-dylib -lSystem -L/usr/local/lib -L. -flat_namespace -undefined suppress -rpath @loader_path/")
 endif(APPLE)
+
+target_link_directories(${ErlangRocksDBNIF_TARGET} PRIVATE "../../rocksdb-cloud/out/lib")
 
 target_link_libraries(
     ${ErlangRocksDBNIF_TARGET}
     PRIVATE
     ${TARGET_LINKER_OPTIONS}
-    ${ERLANG_ERL_INTERFACE_LIB}
     ${ERLANG_EI_LIB}
     ${ROCKSDB_LIBRARIES}
     ${AWSSDK_LINK_LIBRARIES}
@@ -251,4 +253,5 @@ target_link_libraries(
     ${BZIP2_LIBRARIES}
     ${ZLIB_LIBRARY}
     ${TBB_LIBRARIES}
+    "rocksdb"
 )
