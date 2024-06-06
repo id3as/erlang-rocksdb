@@ -17,7 +17,7 @@
 #include <array>
 
 #include "atoms.h"
-#include "rocksdb/cache.h"
+#include "rocksdb/advanced_cache.h"
 #include "cache.h"
 #include "util.h"
 
