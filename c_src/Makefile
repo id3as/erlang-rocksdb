@@ -1,6 +1,6 @@
 UNAME := $(shell uname)
 
-CXX := c++
+CXX := clang++
 CXXFLAGS := -fPIC -I. -I $(NIX_ERL_DIR)/usr/include -Wall -Wextra -O2 -std=c++17 $(NIX_CFLAGS_COMPILE)
 LDFLAGS := $(NIX_LDFLAGS) -l rocksdb
 
