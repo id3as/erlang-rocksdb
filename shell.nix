@@ -48,6 +48,7 @@ mkShell {
 
     patchedErlang
     patchedRebar.rebar3
+    llvmPackages.libcxxClang
     rocksdb
 
   ];
