@@ -1,8 +1,13 @@
 UNAME := $(shell uname)
 
+ifeq ($(UNAME), Darwin)
+CXX := clang++
+else
 CXX := g++
-CXXFLAGS := -fPIC -I. -I $(NIX_ERL_DIR)/usr/include -Wall -Wextra -O2 -std=c++23 $(NIX_CFLAGS_COMPILE) 
-LDFLAGS := $(NIX_LDFLAGS_FOR_TARGET) -l rocksdb
+endif
+
+CXXFLAGS := -fPIC -I. -I $(NIX_ERL_DIR)/usr/include -Wall -Wextra -O2 -std=c++17 $(NIX_CFLAGS_COMPILE) 
+LDFLAGS := $(NIX_LDFLAGS_FOR_TARGET) -lrocksdb
 
 ifeq ($(UNAME), Darwin)
 	LDFLAGS += -flat_namespace -undefined dynamic_lookup
