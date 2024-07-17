@@ -22,8 +22,10 @@
 -export([
   open/2, open/3,
   open_readonly/2, open_readonly/3,
+  open_secondary/3, open_secondary/4,
   open_optimistic_transaction_db/2, open_optimistic_transaction_db/3,
   open_with_ttl/4,
+  try_catchup_with_primary/1,
   close/1,
   set_db_background_threads/2, set_db_background_threads/3,
   destroy/2,
@@ -514,6 +516,14 @@ open(_Name, _DBOpts) ->
   Result :: {ok, db_handle()} | {error, any()}.
 open_readonly(_Name, _DBOpts) ->
   ?nif_stub.
+  
+-spec open_secondary(Name, SecondaryPath, DBOpts) -> Result when
+  Name :: file:filename_all(),
+  SecondaryPath :: file:filename_all(),
+  DBOpts :: options(),
+  Result :: {ok, db_handle()} | {error, any()}.
+open_secondary(_Name, _SecondaryPath, _DBOpts) ->
+  ?nif_stub.
 
 %% @doc Open RocksDB with the specified column families
 -spec(open(Name, DBOpts, CFDescriptors) ->
@@ -531,6 +541,16 @@ open(_Name, _DBOpts, _CFDescriptors) ->
           DBOpts :: db_options(),
           CFDescriptors :: list(cf_descriptor())).
 open_readonly(_Name, _DBOpts, _CFDescriptors) ->
+  ?nif_stub.
+
+%% @doc Open read-only RocksDB with the specified column families
+-spec(open_secondary(Name, SecondaryPath, DBOpts, CFDescriptors) ->
+       {ok, db_handle(), list(cf_handle())} | {error, any()}
+         when Name::file:filename_all(),
+          SecondaryPath::file:filename_all(),
+          DBOpts :: db_options(),
+          CFDescriptors :: list(cf_descriptor())).
+open_secondary(_Name, _SecondaryPath, _DBOpts, _CFDescriptors) ->
   ?nif_stub.
 
 open_with_cf(Name, DbOpts, CFDescriptors) ->
@@ -572,6 +592,11 @@ open_optimistic_transaction_db(_Name, _DbOpts, _CFDescriptors) ->
 open_with_ttl(_Name, _DBOpts, _TTL, _ReadOnly) ->
   ?nif_stub.
 
+-spec(try_catchup_with_primary(DBHandle) -> Res when
+  DBHandle :: db_handle(),
+  Res :: ok | {error, any()}).
+try_catchup_with_primary(_DBHandle) ->
+  ?nif_stub.
 
 %% @doc Close RocksDB
 -spec close(DBHandle) -> Res when
