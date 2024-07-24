@@ -39,10 +39,118 @@ rocksdb::Status& status)
     if (status.IsIncomplete())
         return enif_make_tuple2(env, erocksdb::ATOM_ERROR, erocksdb::ATOM_ERROR_INCOMPLETE);
 
-    ERL_NIF_TERM reason = enif_make_string(env, status.ToString().c_str(),
+    ERL_NIF_TERM reason_str = enif_make_string(env, status.ToString().c_str(),
                                            ERL_NIF_LATIN1);
+    ERL_NIF_TERM code_atom;
+    ERL_NIF_TERM subcode_atom;
+
+    switch (status.code()) {
+        case rocksdb::Status::kNotFound:
+            code_atom = erocksdb::ATOM_STATUS_CODE_NOT_FOUND;
+            break;
+        case rocksdb::Status::kCorruption:
+            code_atom = erocksdb::ATOM_STATUS_CODE_CORRUPTION;
+            break;
+        case rocksdb::Status::kNotSupported:
+            code_atom = erocksdb::ATOM_STATUS_CODE_NOT_SUPPORTED;
+            break;
+        case rocksdb::Status::kInvalidArgument:
+            code_atom = erocksdb::ATOM_STATUS_CODE_INVALID_ARGUMENT;
+            break;
+        case rocksdb::Status::kIOError:
+            code_atom = erocksdb::ATOM_STATUS_CODE_IO_ERROR;
+            break;
+        case rocksdb::Status::kMergeInProgress:
+            code_atom = erocksdb::ATOM_STATUS_CODE_MERGE_IN_PROGRESS;
+            break;
+        case rocksdb::Status::kIncomplete:
+            code_atom = erocksdb::ATOM_STATUS_CODE_INCOMPLETE;
+            break;
+        case rocksdb::Status::kShutdownInProgress:
+            code_atom = erocksdb::ATOM_STATUS_CODE_SHUTDOWN_IN_PROGRESS;
+            break;
+        case rocksdb::Status::kTimedOut:
+            code_atom = erocksdb::ATOM_STATUS_CODE_TIMEDOUT;
+            break;
+        case rocksdb::Status::kAborted:
+            code_atom = erocksdb::ATOM_STATUS_CODE_ABORTED;
+            break;
+        case rocksdb::Status::kBusy:
+            code_atom = erocksdb::ATOM_STATUS_CODE_BUSY;
+            break;
+        case rocksdb::Status::kExpired:
+            code_atom = erocksdb::ATOM_STATUS_CODE_EXPIRED;
+            break;
+        case rocksdb::Status::kTryAgain:
+            code_atom = erocksdb::ATOM_STATUS_CODE_TRY_AGAIN;
+            break;
+        case rocksdb::Status::kCompactionTooLarge:
+            code_atom = erocksdb::ATOM_STATUS_CODE_COMPACTION_TOO_LARGE;
+            break;
+        case rocksdb::Status::kColumnFamilyDropped:
+            code_atom = erocksdb::ATOM_STATUS_CODE_COLUMN_FAMILY_DROPPED;
+            break;
+        default:
+            code_atom = erocksdb::ATOM_UNDEFINED;
+            break;
+    };
+
+    switch (status.subcode()) {
+        case rocksdb::Status::kMutexTimeout:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MUTEX_TIMEOUT;
+            break;
+        case rocksdb::Status::kLockTimeout:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_LOCK_TIMEOUT;
+            break;
+        case rocksdb::Status::kLockLimit:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_LOCK_LIMIT;
+            break;
+        case rocksdb::Status::kNoSpace:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_NOSPACE;
+            break;
+        case rocksdb::Status::kDeadlock:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_DEADLOCK;
+            break;
+        case rocksdb::Status::kStaleFile:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_STALE_FILE;
+            break;
+        case rocksdb::Status::kMemoryLimit:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MEMORY_LIMIT;
+            break;
+        case rocksdb::Status::kSpaceLimit:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_SPACE_LIMIT;
+            break;
+        case rocksdb::Status::kPathNotFound:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_PATH_NOT_FOUND;
+            break;
+        case rocksdb::Status::KMergeOperandsInsufficientCapacity:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MERGE_OPERANDS_INSUFFICIENT_CAPACITY;
+            break;
+        case rocksdb::Status::kManualCompactionPaused:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MANUAL_COMPACTION_PAUSED;
+            break;
+        case rocksdb::Status::kOverwritten:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_OVERWRITTEN;
+            break;
+        case rocksdb::Status::kTxnNotPrepared:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_TXN_NOT_PREPARED;
+            break;
+        case rocksdb::Status::kIOFenced:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_IO_FENCED;
+            break;
+        case rocksdb::Status::kMergeOperatorFailed:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MERGE_OPERATOR_FAILED;
+            break;
+        case rocksdb::Status::kMergeOperandThresholdExceeded:
+            subcode_atom = erocksdb::ATOM_STATUS_SUBCODE_MERGE_OPERAND_THRESHOLD_EXCEEDED;
+            break;
+        default:
+            subcode_atom = erocksdb::ATOM_UNDEFINED;
+            break;
+    }
+
     return enif_make_tuple2(env, erocksdb::ATOM_ERROR,
-                            enif_make_tuple2(env, error, reason));
+                            enif_make_tuple2(env, error, enif_make_tuple3(env, code_atom, subcode_atom, reason_str)));
 }
 
 ERL_NIF_TERM slice_to_binary(ErlNifEnv* env, rocksdb::Slice s)
